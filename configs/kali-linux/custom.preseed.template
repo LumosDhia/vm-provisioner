@@ -46,4 +46,11 @@ d-i user-setup/encrypt-home boolean false
 # are appended by provision.sh.
 d-i pkgsel/include string openssh-server__EXTRA_PACKAGES__
 
+# Installing the package via d-i's in-target apt does NOT reliably leave
+# the service enabled/started the way a normal "apt install" on a running
+# system would (confirmed: openssh-server ends up installed but ssh.service
+# inactive+disabled after a real install run) - so enable it explicitly, or
+# the provisioner's own post-install SSH step can never reach the VM at all.
+d-i preseed/late_command string in-target systemctl enable ssh
+
 d-i finish-install/reboot_in_progress note

@@ -23,7 +23,8 @@ questions, and it installs itself with no further clicking.
 4. Answer a few prompts: VM name, hostname, username, password, SSH key,
    and how much CPU/RAM to use during install vs. afterward.
 5. Toggle any optional extras (skip the GRUB menu, root SSH login, SSH
-   password login, extra packages) or just press Enter to accept defaults.
+   password login, extra packages, desktop auto-login) or just press Enter
+   to accept defaults.
 6. Press Enter to start. It builds the install ISO, creates the VM, and
    installs the OS completely unattended - no need to click through the
    installer yourself.

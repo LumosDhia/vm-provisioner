@@ -137,14 +137,16 @@ declare -A OPT_LABEL=(
     [root_ssh]="Enable root SSH login using your SSH key"
     [allow_pw_ssh]="Allow SSH password login (not just key-based)"
     [extra_packages]="Install extra packages (git, htop, curl, net-tools)"
+    [auto_login]="Log in automatically to the desktop (no login prompt) - skipped on headless installs"
 )
 declare -A OPT_STATE=(
     [skip_grub]=1
     [root_ssh]=1
     [allow_pw_ssh]=1
     [extra_packages]=0
+    [auto_login]=0
 )
-OPT_ORDER=(skip_grub root_ssh allow_pw_ssh extra_packages)
+OPT_ORDER=(skip_grub root_ssh allow_pw_ssh extra_packages auto_login)
 
 toggles_menu() {
     say "Optional post-install scripts (toggle, then press Enter to continue)"
@@ -521,6 +523,22 @@ apply_post_install_options() {
         grep -q \"^PasswordAuthentication\" /etc/ssh/sshd_config || echo \"PasswordAuthentication $pw_value\" >> /etc/ssh/sshd_config
         systemctl restart ssh
     '"
+
+    if [ "${OPT_STATE[auto_login]}" = "1" ]; then
+        say "Applying: desktop auto-login"
+        # Only meaningful on a desktop install (LightDM is Kali's XFCE
+        # default); headless types like Ubuntu Server have no display
+        # manager at all, so this no-ops there instead of failing the run.
+        "${ssh_cmd[@]}" "echo '$PASSWORD_IN' | sudo -S bash -c '
+            if dpkg -s lightdm >/dev/null 2>&1; then
+                mkdir -p /etc/lightdm/lightdm.conf.d
+                printf \"[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n\" \"$USERNAME_IN\" > /etc/lightdm/lightdm.conf.d/50-autologin.conf
+                echo \"INFO: lightdm autologin configured for $USERNAME_IN\"
+            else
+                echo \"INFO: no lightdm installed (headless system) - skipping auto-login\"
+            fi
+        '"
+    fi
 }
 
 finalize_vm() {
