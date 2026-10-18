@@ -1,0 +1,49 @@
+# Layered on top of Kali's own simple-cdd/kali.preseed via
+# simple-cdd/profiles=kali,custom (see machine.conf). Fills in the questions
+# kali.preseed deliberately leaves open: partitioning, user account,
+# hostname, timezone, keyboard.
+
+# Language/locale - this is asked before most of the rest of the preseed
+# file would otherwise matter, so without it the installer stops and asks
+# even at priority=critical (no safe default to silently assume here).
+d-i debian-installer/locale string en_US.UTF-8
+d-i localechooser/preferred-locale string en_US.UTF-8
+
+# Keyboard
+d-i console-setup/ask_detect boolean false
+d-i keyboard-configuration/xkb-keymap select us
+
+# Hostname / domain
+d-i netcfg/get_hostname string __HOSTNAME__
+d-i netcfg/get_hostname seen true
+d-i netcfg/get_domain string
+d-i netcfg/get_domain seen true
+d-i netcfg/choose_interface select auto
+
+# Clock / timezone
+d-i clock-setup/utc boolean true
+d-i time/zone string UTC
+d-i clock-setup/ntp boolean true
+
+# Guided partitioning - use entire disk, all files in one partition
+d-i partman-auto/method string regular
+d-i partman-auto/choose_recipe select atomic
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+
+# User account. Root stays disabled, per Kali's own kali.preseed
+# (passwd/root-login boolean false) - this profile does not override that.
+d-i passwd/user-fullname string __REALNAME__
+d-i passwd/username string __USERNAME__
+d-i passwd/user-password-crypted password __PASSWORD_HASH__
+d-i user-setup/allow-password-weak boolean true
+d-i user-setup/encrypt-home boolean false
+
+# openssh-server is required so the provisioner can apply post-install
+# options over SSH; extra packages (if the extra_packages toggle is on)
+# are appended by provision.sh.
+d-i pkgsel/include string openssh-server__EXTRA_PACKAGES__
+
+d-i finish-install/reboot_in_progress note

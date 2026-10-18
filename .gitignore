@@ -1,0 +1,6 @@
+# Source install ISOs - large binaries, not meant for git
+isos/*.iso
+isos/*.img
+
+# Build/work artifacts (extracted ISO trees, repacked autoinstall ISOs)
+.work/

@@ -1,0 +1,46 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+    variant: ""
+    toggle: null
+  network:
+    network:
+      version: 2
+      ethernets:
+        all-en:
+          match:
+            name: "en*"
+          dhcp4: true
+  storage:
+    layout:
+      name: lvm
+  identity:
+    realname: '__REALNAME__'
+    username: __USERNAME__
+    hostname: __HOSTNAME__
+    password: '__PASSWORD_HASH__'
+  ssh:
+    install-server: true
+    authorized-keys:
+      - '__SSH_PUBKEY__'
+    allow-pw: true
+  user-data:
+    disable_root: false
+    chpasswd:
+      expire: false
+      users:
+        - name: root
+          password: '__PASSWORD_HASH__'
+          type: hash
+#--EXTRA_PACKAGES_START--
+  packages:
+    - git
+    - htop
+    - curl
+    - net-tools
+#--EXTRA_PACKAGES_END--
+  late-commands:
+    - curtin in-target -- apt-get update
