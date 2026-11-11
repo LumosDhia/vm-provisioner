@@ -457,12 +457,26 @@ get_guest_mac() {
     grep '^ethernet0.generatedAddress' "$VMX" | sed -E 's/.*"([0-9a-fA-F:]+)".*/\1/'
 }
 
-wait_for_dhcp_ip() {
+# Newest lease for a MAC that started AFTER this run powered the VM on
+# (BOOT_TS, UTC, same format as dhcpd.leases) and has not expired. The MAC is
+# reused across runs, so leases from earlier runs stay in dhcpd.leases and
+# must never be picked, even if they look valid.
+current_ip_for_mac() {
     local mac="$1" leases_file="/etc/vmware/vmnet8/dhcpd/dhcpd.leases"
-    local ip=""
-    local tries=0
+    [ -n "$BOOT_TS" ] || die "internal error: BOOT_TS not set before DHCP lookup"
+    awk -v mac="$(echo "$mac" | tr 'A-F' 'a-f')" -v now="$(date -u '+%Y/%m/%d %H:%M:%S')" -v boot="$BOOT_TS" '
+        /^lease /   { ip=$2; start=""; end=""; hw="" }
+        /starts /   { start=$3" "$4; sub(/;$/,"",start) }
+        /ends /     { end=$3" "$4; sub(/;$/,"",end) }
+        /hardware ethernet/ { hw=tolower($3); sub(/;$/,"",hw) }
+        /^}/        { if (hw==mac && end>now && start>=boot && start>=best) { best=start; res=ip } }
+        END         { print res }' "$leases_file" 2>/dev/null
+}
+
+wait_for_dhcp_ip() {
+    local mac="$1" ip="" tries=0
     while [ -z "$ip" ] && [ "$tries" -lt 90 ]; do
-        ip="$(grep -B2 -i "$mac" "$leases_file" 2>/dev/null | grep -oP 'lease \K[0-9.]+' | tail -1)"
+        ip="$(current_ip_for_mac "$mac")"
         [ -n "$ip" ] && break
         sleep 10
         tries=$((tries + 1))
@@ -471,7 +485,8 @@ wait_for_dhcp_ip() {
 }
 
 wait_for_ssh() {
-    local ip="$1" user="$2"
+    local ip="$1" user="$2" mac="$3" cur
+    GUEST_IP="$ip"
     # Default 30 min; machine.conf can raise this for heavier installs (e.g.
     # a full desktop + full-upgrade, which can easily take 20-40+ min just
     # for package retrieval) via SSH_WAIT_MINUTES.
@@ -479,8 +494,11 @@ wait_for_ssh() {
     local tries=0
     while [ "$tries" -lt "$max_tries" ]; do
         if timeout 6 ssh -i "${SSH_KEY_FILE%.pub}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=5 "$user@$ip" 'echo ok' 2>/dev/null | grep -q ok; then
+            -o ConnectTimeout=5 "$user@$GUEST_IP" 'echo ok' 2>/dev/null | grep -q ok; then
             return 0
+        # The installer and the installed system can hold different leases.
+        cur="$(current_ip_for_mac "$mac")"
+        [ -n "$cur" ] && GUEST_IP="$cur"
         fi
         sleep 10
         tries=$((tries + 1))
@@ -592,10 +610,11 @@ run_install_and_finalize() {
     say "Waiting for DHCP lease (mac $mac) - this can take a while during install"
     ip="$(wait_for_dhcp_ip "$mac")"
     [ -n "$ip" ] || die "Timed out waiting for the VM to get an IP. Check the VMware console for install errors."
-    say "Got IP: $ip - waiting for SSH"
+    say "Got IP: $ip (lease from this boot) - waiting for SSH"
 
-    wait_for_ssh "$ip" "$USERNAME_IN" || die "Install may still be running or failed - SSH never came up. Check the VMware console."
-    say "SSH is up - install finished"
+    wait_for_ssh "$ip" "$USERNAME_IN" "$mac" || die "Install may still be running or failed - SSH never came up. Check the VMware console."
+    ip="$GUEST_IP"
+    say "SSH is up at $ip - install finished"
 
     apply_post_install_options "$ip"
     finalize_vm
@@ -633,6 +652,7 @@ main() {
     echo
     read -rp "Press Enter to start building, or Ctrl+C to abort: " _
 
+    BOOT_TS="$(date -u '+%Y/%m/%d %H:%M:%S')"
     build_autoinstall_iso
     create_vmx
     run_install_and_finalize
